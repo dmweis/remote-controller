@@ -1,0 +1,15 @@
+[package]
+name = "remote-controller"
+version = "0.1.0"
+authors = ["David Weis <dweis7@gmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+actix = "0.10"
+actix-web = "3.3"
+actix-web-actors = "3.0"
+actix-files = "0.5"
+env_logger = "0.8"
+log = "0.4"
