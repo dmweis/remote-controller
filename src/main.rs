@@ -3,12 +3,27 @@ use actix_files as fs;
 use actix_web::{middleware, web, App, Error, HttpRequest, HttpResponse, HttpServer};
 use actix_web_actors::ws;
 use log::*;
+use serde::Deserialize;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(5);
 const CLIENT_TIMEOUT: Duration = Duration::from_secs(10);
 
+#[derive(Debug, Deserialize, Default, Clone)]
+pub struct GamepadCommand {
+    #[serde(rename = "lx")]
+    left_x: f32,
+    #[serde(rename = "ly")]
+    left_y: f32,
+    #[serde(rename = "rx")]
+    right_x: f32,
+    #[serde(rename = "ry")]
+    right_y: f32,
+}
+
 struct WebsocketActor {
+    controller_state: Arc<ControllerState>,
     last_heartbeat: Instant,
 }
 
@@ -31,7 +46,11 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WebsocketActor {
                 self.last_heartbeat = Instant::now();
             }
             Ok(ws::Message::Text(text)) => {
-                info!("Text message: {}", text);
+                if let Ok(data) = serde_json::from_str::<GamepadCommand>(&text) {
+                    self.controller_state.update(data);
+                } else {
+                    error!("Failed to parse json");
+                }
                 // ctx.text(format!("Response to: {}", text));
             }
             Ok(ws::Message::Binary(bin)) => context.binary(bin),
@@ -46,8 +65,9 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WebsocketActor {
 }
 
 impl WebsocketActor {
-    fn new() -> Self {
+    fn new(controller_state: Arc<ControllerState>) -> Self {
         Self {
+            controller_state,
             last_heartbeat: Instant::now(),
         }
     }
@@ -64,8 +84,32 @@ impl WebsocketActor {
     }
 }
 
-async fn ws_index(request: HttpRequest, stream: web::Payload) -> Result<HttpResponse, Error> {
-    ws::start(WebsocketActor::new(), &request, stream)
+async fn ws_index(
+    request: HttpRequest,
+    stream: web::Payload,
+    controller_state: web::Data<ControllerState>,
+) -> Result<HttpResponse, Error> {
+    ws::start(
+        WebsocketActor::new(Arc::clone(&*controller_state)),
+        &request,
+        stream,
+    )
+}
+
+#[derive(Default)]
+pub struct ControllerState {
+    last_command: Mutex<GamepadCommand>,
+}
+
+impl ControllerState {
+    fn update(&self, command: GamepadCommand) {
+        let mut guard = self.last_command.lock().unwrap();
+        *guard = command;
+    }
+
+    pub fn get_latest(&mut self) -> GamepadCommand {
+        self.last_command.lock().unwrap().clone()
+    }
 }
 
 #[actix_web::main]
@@ -77,10 +121,12 @@ async fn main() -> std::io::Result<()> {
     env_logger::init();
 
     info!("Server listening on localhost:8080");
-    HttpServer::new(|| {
+    let controller_state_data = web::Data::new(ControllerState::default());
+    HttpServer::new(move || {
         App::new()
             .wrap(middleware::Logger::default())
-            .service(web::resource("/ws/").route(web::get().to(ws_index)))
+            .app_data(controller_state_data.clone())
+            .route("/ws/", web::get().to(ws_index))
             .service(fs::Files::new("/", "static/").index_file("index.html"))
     })
     .bind("127.0.0.1:8080")?
