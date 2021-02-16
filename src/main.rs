@@ -1,11 +1,14 @@
 use actix::{clock::Instant, prelude::*};
 use actix_files as fs;
-use actix_web::{middleware, web, App, Error, HttpRequest, HttpResponse, HttpServer};
+use actix_web::{middleware, rt::System, web, App, Error, HttpRequest, HttpResponse, HttpServer};
 use actix_web_actors::ws;
 use log::*;
 use serde::Deserialize;
-use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use std::{
+    sync::{Arc, Mutex},
+    thread::spawn,
+};
 
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(5);
 const CLIENT_TIMEOUT: Duration = Duration::from_secs(10);
@@ -112,24 +115,54 @@ impl ControllerState {
     }
 }
 
-#[actix_web::main]
-async fn main() -> std::io::Result<()> {
+type ErrorWrapper = Box<dyn std::error::Error + Send + Sync + 'static>;
+
+fn run_remote_controller(address: String) -> Result<(), ErrorWrapper> {
+    let mut system = System::new("remote_control_runner");
+    let controller_state_data = web::Data::new(ControllerState::default());
+    system.block_on(async {
+        HttpServer::new(move || {
+            App::new()
+                .wrap(middleware::Logger::default())
+                .app_data(controller_state_data.clone())
+                .route("/ws/", web::get().to(ws_index))
+                .service(fs::Files::new("/", "static/").index_file("index.html"))
+        })
+        .bind(address)?
+        .shutdown_timeout(2)
+        .run()
+        .await?;
+        Ok::<(), ErrorWrapper>(())
+    })?;
+    system.run()?;
+    Ok(())
+}
+
+struct RemoteControllerRunner {
+    _join_handle: std::thread::JoinHandle<Result<(), ErrorWrapper>>,
+}
+
+impl RemoteControllerRunner {
+    fn start(address: String) -> Self {
+        let handle = spawn(move || run_remote_controller(address));
+        Self {
+            _join_handle: handle,
+        }
+    }
+}
+
+fn main() {
     std::env::set_var(
         "RUST_LOG",
         "actix_server=info,actix_web=info,remote_controller=trace",
     );
     env_logger::init();
-
+    let a = RemoteControllerRunner::start("127.0.0.1:8080".to_owned());
     info!("Server listening on localhost:8080");
-    let controller_state_data = web::Data::new(ControllerState::default());
-    HttpServer::new(move || {
-        App::new()
-            .wrap(middleware::Logger::default())
-            .app_data(controller_state_data.clone())
-            .route("/ws/", web::get().to(ws_index))
-            .service(fs::Files::new("/", "static/").index_file("index.html"))
-    })
-    .bind("127.0.0.1:8080")?
-    .run()
-    .await
+    let mut line = String::new();
+    std::io::stdin().read_line(&mut line).unwrap();
+    info!("dropping");
+    drop(a);
+    let mut line = String::new();
+    std::io::stdin().read_line(&mut line).unwrap();
 }
