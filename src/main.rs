@@ -4,11 +4,10 @@ use actix_web::{middleware, rt::System, web, App, Error, HttpRequest, HttpRespon
 use actix_web_actors::ws;
 use log::*;
 use serde::Deserialize;
+use std::sync::mpsc;
+use std::sync::{Arc, Mutex};
+use std::thread;
 use std::time::Duration;
-use std::{
-    sync::{Arc, Mutex},
-    thread::spawn,
-};
 
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(5);
 const CLIENT_TIMEOUT: Duration = Duration::from_secs(10);
@@ -115,38 +114,64 @@ impl ControllerState {
     }
 }
 
-type ErrorWrapper = Box<dyn std::error::Error + Send + Sync + 'static>;
-
-fn run_remote_controller(address: String) -> Result<(), ErrorWrapper> {
+fn run_remote_controller(address: String, stop_signal: mpsc::Receiver<()>) {
     let mut system = System::new("remote_control_runner");
+    let (tx, rx) = mpsc::channel();
+
     let controller_state_data = web::Data::new(ControllerState::default());
-    system.block_on(async {
-        HttpServer::new(move || {
+    let handle = thread::spawn(move || {
+        let mut sys = System::new("http-server-internal");
+        let server = HttpServer::new(move || {
             App::new()
                 .wrap(middleware::Logger::default())
                 .app_data(controller_state_data.clone())
                 .route("/ws/", web::get().to(ws_index))
                 .service(fs::Files::new("/", "static/").index_file("index.html"))
         })
-        .bind(address)?
-        .shutdown_timeout(2)
-        .run()
-        .await?;
-        Ok::<(), ErrorWrapper>(())
-    })?;
-    system.run()?;
-    Ok(())
+        .bind(address)
+        .unwrap()
+        .workers(2)
+        .run();
+        let _ = tx.send(server.clone());
+        sys.block_on(async { server.await }).unwrap();
+        System::current().stop();
+    });
+
+    let srv = rx.recv().unwrap();
+    system.block_on(async move {
+        stop_signal.recv().unwrap();
+        srv.stop(true).await;
+    });
+    System::current().stop();
+    if handle.join().is_err() {
+        error!("Server thread encountered an error");
+    }
 }
 
 struct RemoteControllerRunner {
-    _join_handle: std::thread::JoinHandle<Result<(), ErrorWrapper>>,
+    stop_sender: mpsc::Sender<()>,
+    join_handle: Option<std::thread::JoinHandle<()>>,
 }
 
 impl RemoteControllerRunner {
     fn start(address: String) -> Self {
-        let handle = spawn(move || run_remote_controller(address));
+        let (tx, rx) = mpsc::channel();
+
+        let handle = thread::spawn(move || run_remote_controller(address, rx));
         Self {
-            _join_handle: handle,
+            stop_sender: tx,
+            join_handle: Some(handle),
+        }
+    }
+}
+
+impl Drop for RemoteControllerRunner {
+    fn drop(&mut self) {
+        self.stop_sender.send(()).unwrap();
+        if let Some(join_handle) = self.join_handle.take() {
+            join_handle.join().unwrap();
+        } else {
+            panic!("Failed to drop RemoteControllerRunner");
         }
     }
 }
