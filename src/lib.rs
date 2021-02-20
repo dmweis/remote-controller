@@ -17,13 +17,13 @@ const CLIENT_TIMEOUT: Duration = Duration::from_secs(10);
 #[derive(Debug, Deserialize, Default, Clone)]
 pub struct GamepadCommand {
     #[serde(rename = "lx")]
-    left_x: f32,
+    pub left_x: f32,
     #[serde(rename = "ly")]
-    left_y: f32,
+    pub left_y: f32,
     #[serde(rename = "rx")]
-    right_x: f32,
+    pub right_x: f32,
     #[serde(rename = "ry")]
-    right_y: f32,
+    pub right_y: f32,
 }
 
 #[derive(Default)]
