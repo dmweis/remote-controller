@@ -30,7 +30,7 @@ function setGamepadWatchdog(websocketConnection, deadzone) {
             gamepadMessage = {
                 lx: -gamepadData.lx,
                 ly: -gamepadData.ly,
-                rx: gamepadData.rx,
+                rx: -gamepadData.rx,
                 ry: -gamepadData.ry
             };
             websocketConnection.send(JSON.stringify(gamepadMessage));
@@ -56,7 +56,7 @@ function setGamepadWatchdog(websocketConnection, deadzone) {
                 let gamepadData = {
                     lx: gamepad.axes[1],
                     ly: gamepad.axes[0],
-                    rx: 0,
+                    rx: gamepad.axes[3],
                     ry: gamepad.axes[2],
                     id: gamepad.index,
                     buttons: gamepad.buttons,
