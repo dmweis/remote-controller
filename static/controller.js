@@ -46,3 +46,17 @@ function reconnectionTimer() {
 }
 var reconnectionTimer = setInterval(reconnectionTimer, 1000);
 connect();
+
+const fullscreenButton = document.getElementById("fullscreen_button");
+
+function isFullscreen() {
+    return document.fullscreenElement != null;
+}
+
+fullscreenButton.addEventListener("click", event => {
+    if (isFullscreen()) {
+        document.exitFullscreen()
+    } else {
+        document.body.requestFullscreen();
+    }
+});
