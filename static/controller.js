@@ -10,8 +10,9 @@ function connect() {
     console.log("Connecting...");
     conn.onopen = function () {
         console.log("Connected.");
-        gamepadTimer = setGamepadWatchdog(conn, 0.2);
-        touchScreenManager = mountTouchScreenControls(conn, 0.2);
+        const debouncer = new Debouncer(conn);
+        gamepadTimer = setGamepadWatchdog(debouncer, 0.2);
+        touchScreenManager = mountTouchScreenControls(debouncer, 0.2);
     };
     conn.onmessage = function (e) {
         console.log("Received: " + e.data);

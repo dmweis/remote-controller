@@ -104,6 +104,8 @@ pub fn start_remote_controller_server(
 
     let gamepad = warp::path::path("gamepad.js")
         .map(|| warp::reply::html(include_str!("../static/gamepad.js")));
+    let debounce = warp::path::path("debounce.js")
+        .map(|| warp::reply::html(include_str!("../static/debounce.js")));
     let controller = warp::path::path("controller.js")
         .map(|| warp::reply::html(include_str!("../static/controller.js")));
     let nipplejs = warp::path::path("nipplejs.js")
@@ -121,6 +123,7 @@ pub fn start_remote_controller_server(
     let routes = index
         .or(ws)
         .or(gamepad)
+        .or(debounce)
         .or(controller)
         .or(nipplejs)
         .or(style)

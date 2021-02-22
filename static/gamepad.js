@@ -1,4 +1,4 @@
-function setGamepadWatchdog(websocketConnection, deadzone) {
+function setGamepadWatchdog(connection, deadzone) {
     function axisEquals(left, right) {
         return left.lx === right.lx &&
             left.ly === right.ly &&
@@ -33,7 +33,7 @@ function setGamepadWatchdog(websocketConnection, deadzone) {
                 rx: -gamepadData.rx,
                 ry: -gamepadData.ry
             };
-            websocketConnection.send(JSON.stringify(gamepadMessage));
+            connection.send(gamepadMessage);
         }
         if (!state.fullscreenButtonDown && gamepadData.buttons[9].pressed && !state.fullscreen) {
             document.body.requestFullscreen();

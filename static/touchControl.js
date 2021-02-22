@@ -43,7 +43,7 @@ function axisEquals(left, right) {
     return left.lx == right.lx && left.ly == right.ly && left.rx == right.rx && left.ry == right.ry;
 }
 
-function mountTouchScreenControls(websocketConnection, deadzone) {
+function mountTouchScreenControls(connection, deadzone) {
 
     var moveJoystickData = { x: 0, y: 0 };
     var rotationJoystickData = { x: 0, y: 0 };
@@ -57,7 +57,7 @@ function mountTouchScreenControls(websocketConnection, deadzone) {
         const current = axisToCombined(moveJoystickData, rotationJoystickData);
         if (!axisEquals(current, lastState)) {
             lastState = deepCopy(current);
-            websocketConnection.send(JSON.stringify(current));
+            connection.send(current);
         }
     };
     var touchJoystickInterval = setInterval(touchJoystickListener, 50);
