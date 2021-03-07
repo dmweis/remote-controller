@@ -1,4 +1,5 @@
 use futures::{SinkExt, StreamExt};
+use include_dir::{include_dir, Dir};
 use log::*;
 use serde::Deserialize;
 use std::{
@@ -85,6 +86,8 @@ async fn handle_websocket(ws: WebSocket, controller_state: SharedControllerState
     error!("User connection ended");
 }
 
+const STATIC_FILES_DIR: Dir = include_dir!("static");
+
 pub fn start_remote_controller_server(
     address: impl Into<std::net::SocketAddr>,
 ) -> SharedControllerState {
@@ -102,32 +105,38 @@ pub fn start_remote_controller_server(
     // manually construct paths since this allows us to embed the files into the binary
     let index = warp::path::end().map(|| warp::reply::html(include_str!("../static/index.html")));
 
-    let gamepad = warp::path::path("gamepad.js")
-        .map(|| warp::reply::html(include_str!("../static/gamepad.js")));
-    let debounce = warp::path::path("debounce.js")
-        .map(|| warp::reply::html(include_str!("../static/debounce.js")));
-    let controller = warp::path::path("controller.js")
-        .map(|| warp::reply::html(include_str!("../static/controller.js")));
-    let nipplejs = warp::path::path("nipplejs.js")
-        .map(|| warp::reply::html(include_str!("../static/nipplejs.js")));
-    let style = warp::path::path("style.css").map(|| {
-        warp::reply::with_header(
-            include_str!("../static/style.css"),
-            "Content-Type",
-            "text/css",
-        )
-    });
-    let touch_control = warp::path::path("touchControl.js")
-        .map(|| warp::reply::html(include_str!("../static/touchControl.js")));
+    // This is some weird logic...
+    // but it works for now and not like this app will ever be used anywhere important
+    // famous last words
+    let static_file = warp::path("static").and(warp::path::param()).map(
+        |param: String| -> Box<dyn warp::reply::Reply> {
+            if let Some(file) = STATIC_FILES_DIR.get_file(&param) {
+                if let Some(file_text) = file.contents_utf8() {
+                    // yep. Manually checking file extensions
+                    // I promise most of my code is less bad
+                    // I just don't web
+                    // Okay maybe that's a lie
+                    if param.ends_with(".html") || param.ends_with(".js") {
+                        Box::new(warp::reply::html(file_text))
+                    } else if param.ends_with(".css") {
+                        Box::new(warp::reply::with_header(
+                            file_text,
+                            "Content-Type",
+                            "text/css",
+                        ))
+                    } else {
+                        Box::new("not found")
+                    }
+                } else {
+                    Box::new("not found")
+                }
+            } else {
+                Box::new("not found")
+            }
+        },
+    );
 
-    let routes = index
-        .or(ws)
-        .or(gamepad)
-        .or(debounce)
-        .or(controller)
-        .or(nipplejs)
-        .or(style)
-        .or(touch_control);
+    let routes = index.or(ws).or(static_file);
 
     tokio::task::spawn(async move {
         warp::serve(routes).run(address).await;
