@@ -16,6 +16,16 @@ const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(5);
 const CLIENT_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[derive(Debug, Deserialize, Default, Clone)]
+pub struct CanvasTouch {
+    pub width: f32,
+    pub height: f32,
+    pub down_x: f32,
+    pub down_y: f32,
+    pub up_x: f32,
+    pub up_y: f32,
+}
+
+#[derive(Debug, Deserialize, Default, Clone)]
 pub struct GamepadCommand {
     #[serde(rename = "lx")]
     pub left_x: f32,
@@ -43,7 +53,9 @@ impl ControllerState {
     }
 }
 
-pub type SharedControllerState = Arc<Mutex<ControllerState>>;
+// Why is this double mutexed?
+type SharedControllerState = Arc<Mutex<ControllerState>>;
+type SharedTouchEvent = Arc<Mutex<CanvasTouch>>;
 
 async fn handle_websocket(ws: WebSocket, controller_state: SharedControllerState) {
     trace!("new websocket connection");
@@ -88,13 +100,37 @@ async fn handle_websocket(ws: WebSocket, controller_state: SharedControllerState
 
 const STATIC_FILES_DIR: Dir = include_dir!("static");
 
-pub fn start_remote_controller_server(
-    address: impl Into<std::net::SocketAddr>,
-) -> SharedControllerState {
+pub struct StateHandle {
+    controller_state: SharedControllerState,
+    last_canvas_touch_event: SharedTouchEvent,
+}
+
+impl StateHandle {
+    fn new(
+        controller_state: SharedControllerState,
+        last_canvas_touch_event: SharedTouchEvent,
+    ) -> Self {
+        Self {
+            controller_state,
+            last_canvas_touch_event,
+        }
+    }
+
+    pub fn get_last_gamepad_command(&mut self) -> GamepadCommand {
+        self.controller_state.lock().unwrap().get_latest()
+    }
+
+    pub fn get_latest_canvas_touch(&mut self) -> CanvasTouch {
+        self.last_canvas_touch_event.lock().unwrap().clone()
+    }
+}
+
+pub fn start_remote_controller_server(address: impl Into<std::net::SocketAddr>) -> StateHandle {
     let address = address.into();
     let controller_state = SharedControllerState::default();
     let controller_state_clone = Arc::clone(&controller_state);
     let shared_controller_state = warp::any().map(move || controller_state_clone.clone());
+
     let ws = warp::path("ws")
         .and(warp::ws())
         .and(shared_controller_state)
@@ -102,8 +138,22 @@ pub fn start_remote_controller_server(
             ws.on_upgrade(move |socket| handle_websocket(socket, controller))
         });
 
+    let touch_event = SharedTouchEvent::default();
+    let touch_event_clone = Arc::clone(&touch_event);
+    let shared_touch_event_state = warp::any().map(move || touch_event_clone.clone());
+
+    let canvas_touch_endpoint = warp::path("canvas_touch")
+        .and(warp::filters::body::json())
+        .and(shared_touch_event_state)
+        .map(|data: CanvasTouch, touch_event: Arc<Mutex<CanvasTouch>>| {
+            *touch_event.lock().unwrap() = data;
+            warp::reply()
+        });
+
     // manually construct paths since this allows us to embed the files into the binary
     let index = warp::path::end().map(|| warp::reply::html(include_str!("../static/index.html")));
+    let navigation = warp::path("navigation")
+        .map(|| warp::reply::html(include_str!("../static/navigation.html")));
 
     // This is some weird logic...
     // but it works for now and not like this app will ever be used anywhere important
@@ -136,11 +186,15 @@ pub fn start_remote_controller_server(
         },
     );
 
-    let routes = index.or(ws).or(static_file);
+    let routes = index
+        .or(navigation)
+        .or(ws)
+        .or(canvas_touch_endpoint)
+        .or(static_file);
 
     tokio::task::spawn(async move {
         warp::serve(routes).run(address).await;
     });
 
-    controller_state
+    StateHandle::new(controller_state, touch_event)
 }

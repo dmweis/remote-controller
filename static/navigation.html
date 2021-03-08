@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Navigation</title>
+    <link rel="stylesheet" href="static/navigation_style.css" />
+  </head>
+  <body>
+    <nav>
+      <ul class="navbar">
+        <li>
+          <a href="/">Basic</a>
+        </li>
+        <li>
+          <a href="/navigation">Navigation</a>
+        </li>
+      </ul>
+    </nav>
+    <div class="pageContainer">
+      <canvas id="navigation_canvas"></canvas>
+    </div>
+
+    <script language="javascript" type="text/javascript">
+      const canvas = document.getElementById("navigation_canvas");
+      const ctx = canvas.getContext("2d");
+
+      canvas.width = canvas.offsetWidth;
+      canvas.height = canvas.offsetHeight;
+      let width = canvas.width;
+      let height = canvas.height;
+
+      function clear() {
+        ctx.fillStyle = "green";
+        ctx.fillRect(0, 0, width, height);
+        ctx.fillStyle = "red";
+        ctx.fillRect(10, 10, width - 20, height - 20);
+      }
+
+      function updateCanvasSize() {
+        canvas.width = canvas.offsetWidth;
+        canvas.height = canvas.offsetHeight;
+
+        width = canvas.width;
+        height = canvas.height;
+        clear();
+      }
+      window.onresize = updateCanvasSize;
+
+      updateCanvasSize();
+
+      let lastTouch = { x: 0, y: 0 };
+      let mouseDown = false;
+
+      canvas.addEventListener("mousedown", (e) => {
+        clear();
+        lastTouch = { x: e.offsetX, y: e.offsetY };
+        mouseDown = true;
+      });
+
+      canvas.addEventListener("mousemove", (e) => {
+        if (mouseDown === false) {
+          return;
+        }
+        clear();
+        ctx.beginPath();
+        ctx.strokeStyle = "black";
+        ctx.lineWidth = 1;
+        ctx.moveTo(lastTouch.x, lastTouch.y);
+        ctx.lineTo(e.offsetX, e.offsetY);
+        ctx.stroke();
+        ctx.closePath();
+      });
+
+      canvas.addEventListener("mouseup", (e) => {
+        mouseDown = false;
+        clear();
+        ctx.beginPath();
+        ctx.strokeStyle = "black";
+        ctx.lineWidth = 1;
+        ctx.moveTo(lastTouch.x, lastTouch.y);
+        ctx.lineTo(e.offsetX, e.offsetY);
+        ctx.stroke();
+        ctx.closePath();
+
+        // I don't know what's with that 10
+        // but it's definitely off by 10 pixels... so
+        const canvasTouch = {
+          width: width + 10,
+          height: height + 10,
+          down_x: lastTouch.x,
+          down_y: lastTouch.y,
+          up_x: e.offsetX,
+          up_y: e.offsetY,
+        };
+
+        fetch("http://" + window.location.host + "/canvas_touch/", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(canvasTouch),
+        });
+      });
+    </script>
+  </body>
+</html>
