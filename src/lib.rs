@@ -55,7 +55,7 @@ impl ControllerState {
 
 // Why is this double mutexed?
 type SharedControllerState = Arc<Mutex<ControllerState>>;
-type SharedTouchEvent = Arc<Mutex<CanvasTouch>>;
+type SharedTouchEvent = Arc<Mutex<Option<CanvasTouch>>>;
 
 async fn handle_websocket(ws: WebSocket, controller_state: SharedControllerState) {
     trace!("new websocket connection");
@@ -120,7 +120,7 @@ impl StateHandle {
         self.controller_state.lock().unwrap().get_latest()
     }
 
-    pub fn get_latest_canvas_touch(&self) -> CanvasTouch {
+    pub fn get_latest_canvas_touch(&self) -> Option<CanvasTouch> {
         self.last_canvas_touch_event.lock().unwrap().clone()
     }
 }
@@ -145,10 +145,12 @@ pub fn start_remote_controller_server(address: impl Into<std::net::SocketAddr>) 
     let canvas_touch_endpoint = warp::path("canvas_touch")
         .and(warp::filters::body::json())
         .and(shared_touch_event_state)
-        .map(|data: CanvasTouch, touch_event: Arc<Mutex<CanvasTouch>>| {
-            *touch_event.lock().unwrap() = data;
-            warp::reply()
-        });
+        .map(
+            |data: CanvasTouch, touch_event: Arc<Mutex<Option<CanvasTouch>>>| {
+                *touch_event.lock().unwrap() = Some(data);
+                warp::reply()
+            },
+        );
 
     // manually construct paths since this allows us to embed the files into the binary
     let index = warp::path::end().map(|| warp::reply::html(include_str!("../static/index.html")));
