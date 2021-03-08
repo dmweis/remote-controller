@@ -116,11 +116,11 @@ impl StateHandle {
         }
     }
 
-    pub fn get_last_gamepad_command(&mut self) -> GamepadCommand {
+    pub fn get_last_gamepad_command(&self) -> GamepadCommand {
         self.controller_state.lock().unwrap().get_latest()
     }
 
-    pub fn get_latest_canvas_touch(&mut self) -> CanvasTouch {
+    pub fn get_latest_canvas_touch(&self) -> CanvasTouch {
         self.last_canvas_touch_event.lock().unwrap().clone()
     }
 }
