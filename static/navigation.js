@@ -21,20 +21,21 @@ function updateCanvasSize() {
   height = canvas.height;
   clear();
 }
-window.onresize = updateCanvasSize;
+
+window.addEventListener("resize", updateCanvasSize);
 
 updateCanvasSize();
 
 let lastTouch = { x: 0, y: 0 };
 let mouseDown = false;
 
-canvas.addEventListener("mousedown", (e) => {
+function startDrawing(e) {
   clear();
   lastTouch = { x: e.offsetX, y: e.offsetY };
   mouseDown = true;
-});
+}
 
-canvas.addEventListener("mousemove", (e) => {
+function mouseMoveEvents(e) {
   if (mouseDown === false) {
     return;
   }
@@ -46,9 +47,9 @@ canvas.addEventListener("mousemove", (e) => {
   ctx.lineTo(e.offsetX, e.offsetY);
   ctx.stroke();
   ctx.closePath();
-});
+}
 
-canvas.addEventListener("mouseup", (e) => {
+function endDrawing(e) {
   mouseDown = false;
   clear();
   ctx.beginPath();
@@ -75,4 +76,8 @@ canvas.addEventListener("mouseup", (e) => {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(canvasTouch),
   });
-});
+}
+
+canvas.addEventListener("mousedown", startDrawing);
+canvas.addEventListener("mousemove", mouseMoveEvents);
+canvas.addEventListener("mouseup", endDrawing);
