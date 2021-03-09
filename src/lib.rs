@@ -37,24 +37,8 @@ pub struct GamepadCommand {
     pub right_y: f32,
 }
 
-#[derive(Default)]
-pub struct ControllerState {
-    last_command: Mutex<GamepadCommand>,
-}
-
-impl ControllerState {
-    fn update(&self, command: GamepadCommand) {
-        let mut guard = self.last_command.lock().unwrap();
-        *guard = command;
-    }
-
-    pub fn get_latest(&mut self) -> GamepadCommand {
-        self.last_command.lock().unwrap().clone()
-    }
-}
-
 // Why is this double mutexed?
-type SharedControllerState = Arc<Mutex<ControllerState>>;
+type SharedControllerState = Arc<Mutex<GamepadCommand>>;
 type SharedTouchEvent = Arc<Mutex<Option<CanvasTouch>>>;
 
 async fn handle_websocket(ws: WebSocket, controller_state: SharedControllerState) {
@@ -76,7 +60,7 @@ async fn handle_websocket(ws: WebSocket, controller_state: SharedControllerState
             Ok(msg) => {
                 if let Ok(text) = msg.to_str() {
                     if let Ok(command) = serde_json::from_str(text) {
-                        controller_state.lock().unwrap().update(command);
+                        *controller_state.lock().unwrap() = command;
                     } else {
                         error!("Failed to parse json {}", text);
                     }
@@ -117,7 +101,7 @@ impl StateHandle {
     }
 
     pub fn get_last_gamepad_command(&self) -> GamepadCommand {
-        self.controller_state.lock().unwrap().get_latest()
+        self.controller_state.lock().unwrap().clone()
     }
 
     pub fn get_latest_canvas_touch(&self) -> Option<CanvasTouch> {
