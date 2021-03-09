@@ -121,9 +121,13 @@ impl StateHandle {
     }
 }
 
-pub fn start_remote_controller_server(
+pub fn start_remote_controller_server(address: impl Into<std::net::SocketAddr>) -> StateHandle {
+    start_remote_controller_server_with_map(address, AreaSize::new(1.0, 1.0))
+}
+
+pub fn start_remote_controller_server_with_map(
     address: impl Into<std::net::SocketAddr>,
-    map_size: Option<AreaSize>,
+    map_size: AreaSize,
 ) -> StateHandle {
     let address = address.into();
     let controller_state = SharedControllerState::default();
