@@ -7,7 +7,7 @@ body {
 
 html {
   font-family: "Arial";
-  background-color: rgb(49, 71, 85);
+  background-color: #314755;
 }
 
 .navbar {
@@ -46,6 +46,6 @@ html {
   padding: 0;
   margin: auto;
   display: block;
-  width: 90%;
-  height: 90%;
+  width: 98%;
+  height: 98%;
 }

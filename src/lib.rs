@@ -1,7 +1,7 @@
 use futures::{SinkExt, StreamExt};
 use include_dir::{include_dir, Dir};
 use log::*;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::{
     sync::{Arc, Mutex},
     time::Duration,
@@ -23,6 +23,18 @@ pub struct CanvasTouch {
     pub down_y: f32,
     pub up_x: f32,
     pub up_y: f32,
+}
+
+#[derive(Debug, Serialize, Clone, Copy)]
+pub struct AreaSize {
+    pub width: f32,
+    pub height: f32,
+}
+
+impl AreaSize {
+    pub fn new(width: f32, height: f32) -> Self {
+        Self { width, height }
+    }
 }
 
 #[derive(Debug, Deserialize, Default, Clone)]
@@ -109,7 +121,10 @@ impl StateHandle {
     }
 }
 
-pub fn start_remote_controller_server(address: impl Into<std::net::SocketAddr>) -> StateHandle {
+pub fn start_remote_controller_server(
+    address: impl Into<std::net::SocketAddr>,
+    map_size: Option<AreaSize>,
+) -> StateHandle {
     let address = address.into();
     let controller_state = SharedControllerState::default();
     let controller_state_clone = Arc::clone(&controller_state);
@@ -121,6 +136,8 @@ pub fn start_remote_controller_server(address: impl Into<std::net::SocketAddr>) 
         .map(|ws: warp::ws::Ws, controller| {
             ws.on_upgrade(move |socket| handle_websocket(socket, controller))
         });
+
+    let map_size_endpoint = warp::path("map").map(move || warp::reply::json(&map_size));
 
     let touch_event = SharedTouchEvent::default();
     let touch_event_clone = Arc::clone(&touch_event);
@@ -176,6 +193,7 @@ pub fn start_remote_controller_server(address: impl Into<std::net::SocketAddr>) 
         .or(navigation)
         .or(ws)
         .or(canvas_touch_endpoint)
+        .or(map_size_endpoint)
         .or(static_file);
 
     tokio::task::spawn(async move {
