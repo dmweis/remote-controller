@@ -1,10 +1,8 @@
 const canvas = document.getElementById("navigation_canvas");
 const ctx = canvas.getContext("2d");
 
-canvas.width = canvas.offsetWidth;
-canvas.height = canvas.offsetHeight;
-let width = canvas.width;
-let height = canvas.height;
+let width = 0.0;
+let height = 0.0;
 
 function clear() {
   ctx.fillStyle = "green";
@@ -14,17 +12,17 @@ function clear() {
 }
 
 function updateCanvasSize() {
-  canvas.width = canvas.offsetWidth;
-  canvas.height = canvas.offsetHeight;
+  canvas.width = canvas.clientWidth;
+  canvas.height = canvas.clientHeight;
 
   width = canvas.width;
   height = canvas.height;
   clear();
 }
 
-window.addEventListener("resize", updateCanvasSize);
-
 updateCanvasSize();
+
+window.addEventListener("resize", updateCanvasSize);
 
 let lastTouch = { x: 0, y: 0 };
 let mouseDown = false;
@@ -60,11 +58,9 @@ function endDrawing(e) {
   ctx.stroke();
   ctx.closePath();
 
-  // I don't know what's with that 10
-  // but it's definitely off by 10 pixels... so
   const canvasTouch = {
-    width: width + 10,
-    height: height + 10,
+    width: width,
+    height: height,
     down_x: lastTouch.x,
     down_y: lastTouch.y,
     up_x: e.offsetX,
