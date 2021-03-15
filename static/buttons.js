@@ -5,7 +5,7 @@ function populateButtons(actions) {
         const actionDescription = action.description;
         const actionId = action.id;
         const button = document.createElement("button");
-        button.classList.add("fancyful_button");
+        button.classList.add("action_button");
         button.innerHTML = actionDescription;
         button.addEventListener("click", () => {
             fetch("http://" + window.location.host + "/action/", {
