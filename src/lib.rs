@@ -3,17 +3,49 @@ use include_dir::{include_dir, Dir};
 use log::*;
 use serde::{Deserialize, Serialize};
 use std::{
-    sync::{Arc, Mutex},
+    sync::{
+        mpsc::{channel, Receiver, Sender, TryRecvError},
+        Arc, Mutex,
+    },
     time::Duration,
 };
 use tokio::time::{sleep, timeout};
 use warp::{
+    filters::BoxedFilter,
     ws::{Message, WebSocket},
-    Filter,
+    Filter, Reply,
 };
 
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(5);
 const CLIENT_TIMEOUT: Duration = Duration::from_secs(10);
+
+#[derive(Debug, Serialize, Clone)]
+pub struct Action {
+    id: String,
+    description: String,
+}
+
+impl Action {
+    pub fn new(id: String, description: String) -> Self {
+        Self { id, description }
+    }
+}
+
+#[derive(Debug, Serialize, Default, Clone)]
+pub struct ActionList {
+    actions: Vec<Action>,
+}
+
+impl ActionList {
+    pub fn new(actions: Vec<Action>) -> Self {
+        Self { actions }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct ActionIdWrapper {
+    id: String,
+}
 
 #[derive(Debug, Deserialize, Default, Clone)]
 pub struct CanvasTouch {
@@ -99,16 +131,19 @@ const STATIC_FILES_DIR: Dir = include_dir!("static");
 pub struct StateHandle {
     controller_state: SharedControllerState,
     last_canvas_touch_event: SharedTouchEvent,
+    action_receiver: Receiver<String>,
 }
 
 impl StateHandle {
     fn new(
         controller_state: SharedControllerState,
         last_canvas_touch_event: SharedTouchEvent,
+        action_receiver: Receiver<String>,
     ) -> Self {
         Self {
             controller_state,
             last_canvas_touch_event,
+            action_receiver,
         }
     }
 
@@ -119,20 +154,35 @@ impl StateHandle {
     pub fn get_latest_canvas_touch(&self) -> Option<CanvasTouch> {
         self.last_canvas_touch_event.lock().unwrap().clone()
     }
+
+    pub fn check_new_actions(&mut self) -> anyhow::Result<Option<String>> {
+        match self.action_receiver.try_recv() {
+            Ok(message) => Ok(Some(message)),
+            Err(receive_error) => match receive_error {
+                TryRecvError::Empty => Ok(None),
+                TryRecvError::Disconnected => Err(anyhow::anyhow!("Sender disconnected")),
+            },
+        }
+    }
 }
 
 pub fn start_remote_controller_server(address: impl Into<std::net::SocketAddr>) -> StateHandle {
-    start_remote_controller_server_with_map(address, AreaSize::new(1.0, 1.0))
+    start_remote_controller_server_with_map(address, AreaSize::new(1.0, 1.0), ActionList::default())
 }
 
 pub fn start_remote_controller_server_with_map(
     address: impl Into<std::net::SocketAddr>,
     map_size: AreaSize,
+    actions: ActionList,
 ) -> StateHandle {
     let address = address.into();
     let controller_state = SharedControllerState::default();
     let controller_state_clone = Arc::clone(&controller_state);
     let shared_controller_state = warp::any().map(move || controller_state_clone.clone());
+
+    let (action_sender, action_receiver) = channel();
+    let shared_action_sender = Arc::new(Mutex::new(action_sender));
+    let shared_action_sender = warp::any().map(move || Arc::clone(&shared_action_sender));
 
     let ws = warp::path("ws")
         .and(warp::ws())
@@ -157,16 +207,51 @@ pub fn start_remote_controller_server_with_map(
             },
         );
 
+    let actions_endpoint = warp::path("actions").map(move || warp::reply::json(&actions));
+    let action_submit_endpoint = warp::path("action")
+        .and(warp::post())
+        .and(warp::filters::body::json())
+        .and(shared_action_sender)
+        .map(
+            |action: ActionIdWrapper, action_sender: Arc<Mutex<Sender<String>>>| {
+                action_sender.lock().unwrap().send(action.id).unwrap();
+                warp::reply()
+            },
+        );
+
     // manually construct paths since this allows us to embed the files into the binary
     let index = warp::path::end().map(|| warp::reply::html(include_str!("../static/index.html")));
     let navigation = warp::path("navigation")
         .map(|| warp::reply::html(include_str!("../static/navigation.html")));
+    let buttons =
+        warp::path("buttons").map(|| warp::reply::html(include_str!("../static/buttons.html")));
 
     // This is some weird logic...
     // but it works for now and not like this app will ever be used anywhere important
     // famous last words
-    let static_file = warp::path("static").and(warp::path::param()).map(
-        |param: String| -> Box<dyn warp::reply::Reply> {
+    let static_file = static_file_route();
+
+    let routes = index
+        .or(navigation)
+        .or(buttons)
+        .or(ws)
+        .or(canvas_touch_endpoint)
+        .or(actions_endpoint)
+        .or(action_submit_endpoint)
+        .or(map_size_endpoint)
+        .or(static_file);
+
+    tokio::task::spawn(async move {
+        warp::serve(routes).run(address).await;
+    });
+
+    StateHandle::new(controller_state, touch_event, action_receiver)
+}
+
+fn static_file_route() -> BoxedFilter<(impl Reply,)> {
+    warp::path("static")
+        .and(warp::path::param())
+        .map(|param: String| -> Box<dyn warp::reply::Reply> {
             if let Some(file) = STATIC_FILES_DIR.get_file(&param) {
                 if let Some(file_text) = file.contents_utf8() {
                     // yep. Manually checking file extensions
@@ -190,19 +275,6 @@ pub fn start_remote_controller_server_with_map(
             } else {
                 Box::new("not found")
             }
-        },
-    );
-
-    let routes = index
-        .or(navigation)
-        .or(ws)
-        .or(canvas_touch_endpoint)
-        .or(map_size_endpoint)
-        .or(static_file);
-
-    tokio::task::spawn(async move {
-        warp::serve(routes).run(address).await;
-    });
-
-    StateHandle::new(controller_state, touch_event)
+        })
+        .boxed()
 }

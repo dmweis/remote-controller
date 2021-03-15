@@ -2,10 +2,9 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Navigation</title>
-    <link rel="stylesheet" href="static/navigation_style.css" />
+    <title>Robot controller</title>
+    <link rel="stylesheet" href="static/button_style.css" />
   </head>
   <body>
     <nav>
@@ -19,16 +18,16 @@
         <li>
           <a href="/buttons">Buttons</a>
         </li>
+        <li id="fullscreen_button_container">
+          <button id="fullscreen_button">fullscreen</button>
+        </li>
       </ul>
     </nav>
-    <div class="pageContainer">
-      <canvas id="navigation_canvas"></canvas>
-    </div>
-
+    <div class="pageContainer" id="button_container"></div>
     <script
       language="javascript"
       type="text/javascript"
-      src="static/navigation.js"
+      src="static/buttons.js"
     ></script>
   </body>
 </html>
