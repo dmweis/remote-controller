@@ -12,7 +12,7 @@ function connect() {
         console.log("Connected.");
         const debouncer = new Debouncer(conn);
         gamepadTimer = setGamepadWatchdog(debouncer, 0.2);
-        touchScreenManager = mountTouchScreenControls(debouncer, 0.2);
+        touchScreenManager = mountTouchScreenControls(debouncer, 0.05);
     };
     conn.onmessage = function (e) {
         console.log("Received: " + e.data);
