@@ -12,6 +12,7 @@ use std::{
 use tokio::time::{sleep, timeout};
 use warp::{
     filters::BoxedFilter,
+    hyper::StatusCode,
     ws::{Message, WebSocket},
     Filter, Reply,
 };
@@ -219,26 +220,20 @@ pub fn start_remote_controller_server_with_map(
             },
         );
 
-    // manually construct paths since this allows us to embed the files into the binary
     let index = warp::path::end().map(|| warp::reply::html(include_str!("../static/index.html")));
-    let navigation = warp::path("navigation")
-        .map(|| warp::reply::html(include_str!("../static/navigation.html")));
-    let buttons =
-        warp::path("buttons").map(|| warp::reply::html(include_str!("../static/buttons.html")));
 
-    // This is some weird logic...
-    // but it works for now and not like this app will ever be used anywhere important
-    // famous last words
+    let nipple_js_lib = warp::path("nipplejs.min.js")
+        .map(|| warp::reply::html(include_str!(concat!(env!("OUT_DIR"), "/nipplejs.min.js"))));
+
     let static_file = static_file_route();
 
     let routes = index
-        .or(navigation)
-        .or(buttons)
         .or(ws)
         .or(canvas_touch_endpoint)
         .or(actions_endpoint)
         .or(action_submit_endpoint)
         .or(map_size_endpoint)
+        .or(nipple_js_lib)
         .or(static_file);
 
     tokio::task::spawn(async move {
@@ -251,30 +246,31 @@ pub fn start_remote_controller_server_with_map(
 fn static_file_route() -> BoxedFilter<(impl Reply,)> {
     warp::path("static")
         .and(warp::path::param())
-        .map(|param: String| -> Box<dyn warp::reply::Reply> {
-            if let Some(file) = STATIC_FILES_DIR.get_file(&param) {
-                if let Some(file_text) = file.contents_utf8() {
-                    // yep. Manually checking file extensions
-                    // I promise most of my code is less bad
-                    // I just don't web
-                    // Okay maybe that's a lie
-                    if param.ends_with(".html") || param.ends_with(".js") {
-                        Box::new(warp::reply::html(file_text))
-                    } else if param.ends_with(".css") {
-                        Box::new(warp::reply::with_header(
-                            file_text,
-                            "Content-Type",
-                            "text/css",
-                        ))
-                    } else {
-                        Box::new("not found")
-                    }
-                } else {
-                    Box::new("not found")
-                }
+        .map(|param: String| -> Box<dyn warp::reply::Reply> { get_static_file(&param) })
+        .boxed()
+}
+
+fn get_static_file(path: &str) -> Box<dyn Reply> {
+    STATIC_FILES_DIR
+        .get_file(&path)
+        .and_then(|file| file.contents_utf8().map(|contents| (contents, path)))
+        .map(|(file_text, path)| -> Box<dyn Reply> {
+            // Manually checking file extensions...
+            // I am not good at this web stuff
+            if path.ends_with(".html") || path.ends_with(".js") {
+                Box::new(warp::reply::html(file_text))
+            } else if path.ends_with(".css") {
+                Box::new(warp::reply::with_header(
+                    file_text,
+                    "Content-Type",
+                    "text/css",
+                ))
             } else {
-                Box::new("not found")
+                Box::new(warp::reply::with_status(
+                    "",
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                ))
             }
         })
-        .boxed()
+        .unwrap_or_else(|| Box::new(warp::reply::with_status("", StatusCode::NOT_FOUND)))
 }
