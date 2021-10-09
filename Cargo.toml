@@ -20,3 +20,6 @@ anyhow = "1.0"
 [dev-dependencies]
 env_logger = "0.8"
 tokio = { version = "1", features = ["full"] }
+
+[build-dependencies]
+ureq = "2.2"
